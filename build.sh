@@ -185,7 +185,7 @@ echo "libmpv-2.dll imports: $IMPORTS"
 if echo "$IMPORTS" | grep -qiE '^(lib|zlib|avcodec|avformat|avutil|swresample|swscale|avfilter|soxr)'; then
   echo "ERROR: the DLL depends on a non-system DLL"; exit 1
 fi
-for f in $FILTERS; do grep -qaP "\x00$f\x00" "$DLL" || { echo "ERROR: filter $f missing"; exit 1; }; done
+for f in $FILTERS; do grep -qE "&ff_[av]f_$f," "$S/ffmpeg/libavfilter/filter_list.c" || { echo "ERROR: filter $f missing"; exit 1; }; done
 grep -qa -- "--enable-libsoxr" "$DLL" || { echo "ERROR: soxr not in the build"; exit 1; }
 grep -qa -- "--enable-gpl" "$DLL" && { echo "ERROR: GPL build"; exit 1; }
 
