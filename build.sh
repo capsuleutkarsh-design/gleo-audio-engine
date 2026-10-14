@@ -171,7 +171,7 @@ PKG=mpv
 cfg "${MESON[@]}" --default-library shared --prefer-static \
     -Dauto_features=disabled -Dlibmpv=true -Dcplayer=false -Dgpl=false -Dtests=false \
     -Dbuild-date=false -Dwin32-threads=enabled -Dwasapi=enabled -Dzlib=enabled \
-    -Dcplugins=disabled -Dlua=disabled -Djavascript=disabled -Dwin32-smtc=disabled \
+    -Dgl=disabled -Dcplugins=disabled -Dlua=disabled -Djavascript=disabled -Dwin32-smtc=disabled \
     "$W/b-mpv" "$S/mpv"
 ninja -C "$W/b-mpv" install >/dev/null
 DLL=$P/bin/libmpv-2.dll
