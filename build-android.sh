@@ -150,18 +150,19 @@ EOF
   "$TC/llvm-strip" -s "$SO"
 
   # Checks
-  NEEDED=$("$TC/llvm-readelf" -d "$SO" | awk '/NEEDED/ {gsub(/[\[\]]/, "", $5); print $5}')
+  # Read first, then grep: `readelf | grep -q` fails under pipefail when grep stops early.
+  DYN=$("$TC/llvm-readelf" -d "$SO"); SYMS=$("$TC/llvm-readelf" --dyn-syms -W "$SO")
+  NEEDED=$(awk '/NEEDED/ {gsub(/[\[\]]/, "", $5); print $5}' <<< "$DYN")
   echo "$ABI libmpv.so needs: $(echo $NEEDED)"
   for n in $NEEDED; do
     case $n in libc.so|libm.so|libdl.so|liblog.so|libandroid.so|libOpenSLES.so) ;;
       *) echo "ERROR: $ABI libmpv.so needs $n, not an Android system library"; exit 1 ;;
     esac
   done
-  "$TC/llvm-readelf" -d "$SO" | grep -q TEXTREL && { echo "ERROR: $ABI has text relocations"; exit 1; }
+  grep -q TEXTREL <<< "$DYN" && { echo "ERROR: $ABI has text relocations"; exit 1; }
   "$TC/llvm-readelf" -lW "$SO" | awk '/LOAD/ && $NF != "0x4000" {bad=1} END {exit bad}' \
     || { echo "ERROR: $ABI is not 16 KB aligned"; exit 1; }
-  "$TC/llvm-readelf" --dyn-syms -W "$SO" | grep -q ' mpv_lavc_set_java_vm$' \
-    || { echo "ERROR: $ABI misses mpv_lavc_set_java_vm"; exit 1; }
+  grep -q ' mpv_lavc_set_java_vm$' <<< "$SYMS" || { echo "ERROR: $ABI misses mpv_lavc_set_java_vm"; exit 1; }
   grep -qa -- "--enable-libsoxr" "$SO" || { echo "ERROR: soxr not in the build"; exit 1; }
   grep -qa -- "--enable-gpl" "$SO" && { echo "ERROR: GPL build"; exit 1; }
   mkdir -p "$OUT/lib/$ABI" && cp "$SO" "$OUT/lib/$ABI/libmpv.so"
