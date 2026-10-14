@@ -165,9 +165,9 @@ EOF
   grep -q ' mpv_lavc_set_java_vm$' <<< "$SYMS" || { echo "ERROR: $ABI misses mpv_lavc_set_java_vm"; exit 1; }
   grep -qa -- "--enable-libsoxr" "$SO" || { echo "ERROR: soxr not in the build"; exit 1; }
   grep -qa -- "--enable-gpl" "$SO" && { echo "ERROR: GPL build"; exit 1; }
+  for f in $FILTERS; do grep -qE "&ff_[av]f_$f," "$B/b-ffmpeg/libavfilter/filter_list.c" || { echo "ERROR: filter $f missing"; exit 1; }; done
   mkdir -p "$OUT/lib/$ABI" && cp "$SO" "$OUT/lib/$ABI/libmpv.so"
 done
-for f in $FILTERS; do grep -qE "&ff_[av]f_$f," "$S/ffmpeg/libavfilter/filter_list.c" || { echo "ERROR: filter $f missing"; exit 1; }; done
 
 # --- Licences ---------------------------------------------------------------------
 copy_licences
