@@ -1,0 +1,74 @@
+name: Build and release
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Publish a GitHub release (v<date>)
+        type: boolean
+        default: true
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q nasm ninja-build pkg-config zip python3-jinja2
+          pipx install meson==1.9.2
+          meson --version; cmake --version | head -1
+
+      - name: Build
+        run: |
+          echo "TAG=v$(date -u +%Y.%m.%d)" >> "$GITHUB_ENV"
+          TAG=v$(date -u +%Y.%m.%d) ./build.sh
+
+      - name: Upload the build (always kept for 30 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-audio-engine
+          path: |
+            out/*.zip
+            out/*.tar
+            out/SHA256SUMS.txt
+            out/CONFIGURE.txt
+            out/BUILDINFO.txt
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: |
+            work/b-*/meson-logs/meson-log.txt
+            work/src/ffmpeg/ffbuild/config.log
+            work/b-soxr/CMakeFiles/*.log
+
+      - name: Release
+        if: github.event_name == 'workflow_dispatch' && inputs.release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd out
+          gh release delete "$TAG" -y --cleanup-tag 2>/dev/null || true
+          {
+            echo "Lumen's audio engine: libmpv-2.dll (mpv + FFmpeg, audio only, Windows x64)."
+            echo
+            echo "**Files**"
+            echo "- \`lumen-audio-engine-$TAG-win64.zip\`: the DLL, headers, LICENSES/, BUILDINFO.txt, CONFIGURE.txt"
+            echo "- \`lumen-audio-engine-$TAG-source.tar\`: the corresponding source (every exact source tarball, the build scripts, licences)"
+            echo "- \`SHA256SUMS.txt\`, \`CONFIGURE.txt\` (the exact configure lines), \`BUILDINFO.txt\` (versions)"
+            echo
+            echo '```'; cat SHA256SUMS.txt; echo '```'
+            echo '```'; cat BUILDINFO.txt; echo '```'
+          } > notes.md
+          gh release create "$TAG" --title "Lumen audio engine $TAG" --notes-file notes.md \
+            lumen-audio-engine-*.zip lumen-audio-engine-*-source.tar SHA256SUMS.txt CONFIGURE.txt BUILDINFO.txt
