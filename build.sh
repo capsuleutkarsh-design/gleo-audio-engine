@@ -57,6 +57,8 @@ fetch() { # url sha file
   curl -fL --retry 5 --retry-delay 5 -o "$3" "$1"
   echo "$2  $3" | sha256sum -c -
 }
+# Runs a build step quietly; shows the end of its output if it fails.
+q() { "$@" > "$W/step.log" 2>&1 || { tail -80 "$W/step.log"; exit 1; }; }
 # Logs the exact configure command into CONFIGURE.txt, then runs it.
 cfg() { { echo; echo "## $PKG"; printf '%q ' "$@"; echo; } >> "$LOG"; "$@"; }
 
@@ -113,30 +115,30 @@ S=$W/src
 # --- Libraries ---------------------------------------------------------------------
 PKG=zlib; cd "$S/zlib"
 cfg env CHOST=$H CC=$H-clang AR=$H-ar RANLIB=$H-ranlib ./configure --prefix="$P" --static
-make -j"$JOBS" install >/dev/null
+q make -j"$JOBS" install
 
 PKG=freetype
 cfg "${LIBMESON[@]}" -Dauto_features=disabled -Dharfbuzz=disabled -Dzlib=disabled -Dbrotli=disabled \
     -Dbzip2=disabled -Dpng=disabled "$W/b-freetype" "$S/freetype"
-ninja -C "$W/b-freetype" install >/dev/null
+q ninja -C "$W/b-freetype" install
 
 PKG=fribidi
 cfg "${LIBMESON[@]}" -Ddocs=false -Dbin=false -Dtests=false "$W/b-fribidi" "$S/fribidi"
-ninja -C "$W/b-fribidi" install >/dev/null
+q ninja -C "$W/b-fribidi" install
 
 PKG=harfbuzz
 cfg "${LIBMESON[@]}" -Dauto_features=disabled -Dfreetype=enabled -Draster=disabled -Dvector=disabled \
     -Dgpu=disabled -Dsubset=disabled -Dtests=disabled -Dutilities=disabled -Ddocs=disabled \
     "$W/b-harfbuzz" "$S/harfbuzz"
-ninja -C "$W/b-harfbuzz" install >/dev/null
+q ninja -C "$W/b-harfbuzz" install
 
 PKG=libass
 cfg "${LIBMESON[@]}" -Dauto_features=disabled -Drequire-system-font-provider=false "$W/b-libass" "$S/libass"
-ninja -C "$W/b-libass" install >/dev/null
+q ninja -C "$W/b-libass" install
 
 PKG=libplacebo
 cfg "${LIBMESON[@]}" -Dauto_features=disabled -Ddemos=false -Dtests=false "$W/b-libplacebo" "$S/libplacebo"
-ninja -C "$W/b-libplacebo" install >/dev/null
+q ninja -C "$W/b-libplacebo" install
 
 PKG=soxr
 cfg cmake -S "$S/soxr" -B "$W/b-soxr" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Windows \
@@ -144,7 +146,7 @@ cfg cmake -S "$S/soxr" -B "$W/b-soxr" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAK
     -DCMAKE_INSTALL_PREFIX="$P" -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DBUILD_SHARED_LIBS=OFF \
     -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF -DWITH_OPENMP=OFF -DWITH_LSR_BINDINGS=OFF \
     -DHAVE_WORDS_BIGENDIAN_EXITCODE=1
-ninja -C "$W/b-soxr" install >/dev/null
+q ninja -C "$W/b-soxr" install
 
 PKG=libbs2b # one C file; its autotools build wants libsndfile for tools we don't ship.
 { echo; echo "## $PKG"; echo "$H-clang -O2 -c src/bs2b.c; ar rcs libbs2b.a bs2b.o"; } >> "$LOG"
@@ -164,7 +166,7 @@ cfg ./configure --prefix="$P" --target-os=mingw32 --arch=x86_64 --enable-cross-c
     --disable-network --disable-avdevice --disable-everything \
     --enable-protocol=file \
     $(en filter "$FILTERS") $(en decoder "$DECODERS") $(en demuxer "$DEMUXERS") $(en parser "$PARSERS")
-make -j"$JOBS" >/dev/null && make install >/dev/null
+q make -j"$JOBS"; q make install
 
 # --- mpv -> libmpv-2.dll -------------------------------------------------------------
 PKG=mpv
@@ -173,7 +175,7 @@ cfg "${MESON[@]}" --default-library shared --prefer-static \
     -Dbuild-date=false -Dwin32-threads=enabled -Dwasapi=enabled -Dzlib=enabled \
     -Dgl=disabled -Dcplugins=disabled -Dlua=disabled -Djavascript=disabled -Dwin32-smtc=disabled \
     "$W/b-mpv" "$S/mpv"
-ninja -C "$W/b-mpv" install >/dev/null
+q ninja -C "$W/b-mpv" install
 DLL=$P/bin/libmpv-2.dll
 $H-strip -s "$DLL"
 
