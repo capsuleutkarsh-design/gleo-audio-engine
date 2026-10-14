@@ -128,7 +128,7 @@ EOF
   cfg "$S/ffmpeg/configure" --prefix="$P" --target-os=android --arch=$ARCH --enable-cross-compile \
       --cc="$CC" --cxx="$CXX" --ar="$TC/llvm-ar" --nm="$TC/llvm-nm" --ranlib="$TC/llvm-ranlib" \
       --strip="$TC/llvm-strip" --pkg-config=pkg-config --pkg-config-flags=--static \
-      --extra-cflags="-I$P/include $XC" --extra-ldflags="-L$P/lib" \
+      --extra-cflags="-I$P/include $XC" --extra-ldflags="-L$P/lib" --extra-libs=-lm \
       --enable-version3 --disable-gpl --disable-nonfree \
       --enable-static --disable-shared --enable-pic --disable-programs --disable-doc --disable-debug \
       --enable-stripping --disable-autodetect --enable-pthreads --enable-jni --enable-zlib \
