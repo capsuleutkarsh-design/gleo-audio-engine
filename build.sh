@@ -85,7 +85,7 @@ cpu_family = 'x86_64'
 cpu = 'x86_64'
 endian = 'little'
 [built-in options]
-c_link_args = ['-static', '$HARDEN']
+c_link_args = ['-static', '$HARDEN', '-lc++']  # libplacebo has C++ inside
 cpp_link_args = ['-static', '$HARDEN']
 [properties]
 pkg_config_libdir = '$P/lib/pkgconfig'
