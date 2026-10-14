@@ -121,7 +121,7 @@ EOF
   { echo; echo "## $PKG"; echo "$T$API-clang -O2 -fPIC $XC -c src/bs2b.c; llvm-ar rcs libbs2b.a bs2b.o"; } >> "$LOG"
   "$CC" -O2 -fPIC $XC -c "$S/libbs2b/src/bs2b.c" -o "$B/bs2b.o" && "$TC/llvm-ar" rcs "$P/lib/libbs2b.a" "$B/bs2b.o"
   mkdir -p "$P/include/bs2b" && cp "$S"/libbs2b/src/{bs2b.h,bs2btypes.h,bs2bversion.h} "$P/include/bs2b/"
-  printf 'prefix=%s\nlibdir=${prefix}/lib\nincludedir=${prefix}/include\n\nName: libbs2b\nDescription: Bauer stereophonic-to-binaural DSP library\nVersion: 3.1.0\nLibs: -L${libdir} -lbs2b\nCflags: -I${includedir}/bs2b\n' "$P" > "$P/lib/pkgconfig/libbs2b.pc"
+  printf 'prefix=%s\nlibdir=${prefix}/lib\nincludedir=${prefix}/include\n\nName: libbs2b\nDescription: Bauer stereophonic-to-binaural DSP library\nVersion: 3.1.0\nLibs: -L${libdir} -lbs2b\nLibs.private: -lm\nCflags: -I${includedir}/bs2b\n' "$P" > "$P/lib/pkgconfig/libbs2b.pc"
 
   # FFmpeg (LGPL v3: --enable-version3, never --enable-gpl). JNI on: mpv's AudioTrack output uses it.
   PKG="$ABI ffmpeg"; mkdir -p "$B/b-ffmpeg"; cd "$B/b-ffmpeg"
