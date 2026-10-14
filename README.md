@@ -1,8 +1,9 @@
 # Lumen audio engine
 
-This is the sound engine of [Lumen](https://github.com/capsuleutkarsh-design/lumen), a music player for Windows.
-It is one file, `libmpv-2.dll`: [mpv](https://mpv.io) and [FFmpeg](https://ffmpeg.org), built for **audio only**,
-for Windows x64.
+This is the sound engine of [Lumen](https://github.com/capsuleutkarsh-design/lumen), a music player for Windows and
+Android. It is [mpv](https://mpv.io) and [FFmpeg](https://ffmpeg.org), built for **audio only**, as one file:
+`libmpv-2.dll` for Windows x64, and `libmpv.so` for Android (arm64-v8a, armeabi-v7a, x86_64; Android 8 / API 26 and up).
+Both are built from the same sources, with the same filters, soxr and bs2b.
 
 Lumen used to ship the general-purpose audio build that comes with `media_kit`. That build is from 2023 and has
 almost no audio filters. This one is newer and has what Lumen needs for good sound:
@@ -22,13 +23,15 @@ repeat exactly how the DLL was made.
 
 ## Download
 
-Each [release](https://github.com/capsuleutkarsh-design/lumen-audio-engine/releases) (named `v<year>.<month>.<day>`) has:
+Windows releases are named `v<year>.<month>.<day>`, Android releases `v<year>.<month>.<day>-android`.
+Each [release](https://github.com/capsuleutkarsh-design/lumen-audio-engine/releases) has:
 
 | File | What it is |
 |---|---|
 | `lumen-audio-engine-<tag>-win64.zip` | `libmpv-2.dll`, the mpv headers, `LICENSES/`, `BUILDINFO.txt`, `CONFIGURE.txt` |
+| `lumen-audio-engine-<tag>.zip` (Android) | `lib/<abi>/libmpv.so` (the APK / jniLibs layout), the mpv headers, `LICENSES/`, `BUILDINFO.txt`, `CONFIGURE.txt` |
 | `lumen-audio-engine-<tag>-source.tar` | The complete corresponding source: every source tarball used, exactly as built, plus these build scripts and the licences |
-| `SHA256SUMS.txt` | SHA-256 of the zip, the DLL and the source tar |
+| `SHA256SUMS.txt` | SHA-256 of the zip, the DLL (or each `libmpv.so`) and the source tar |
 | `CONFIGURE.txt` | The exact configure command of every part (FFmpeg, mpv and each library) |
 | `BUILDINFO.txt` | The versions, download URLs and SHA-256 of all sources and of the compiler |
 
@@ -49,7 +52,12 @@ Each [release](https://github.com/capsuleutkarsh-design/lumen-audio-engine/relea
 | [zlib](https://zlib.net) | 1.3.2 | zlib |
 | [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) runtime (libc++, libunwind, compiler-rt, mingw-w64 CRT), linked in statically | 20260922 | Apache-2.0 WITH LLVM-exception; mingw-w64 runtime licence |
 
-So the whole DLL is under the **LGPL, version 3 or later** (FFmpeg with version3 makes it so), and the other parts keep
+On Android the C++ runtime is the NDK's libc++ (Apache-2.0 WITH LLVM-exception), linked in statically; the
+mingw-w64 runtime is Windows only. The Android `libmpv.so` needs only Android system libraries (libc, libm, libdl,
+libandroid, libOpenSLES), has mpv's AudioTrack, AAudio and OpenSL ES outputs, and exports `mpv_lavc_set_java_vm`,
+which media_kit calls to give FFmpeg the Java VM (the same function as media_kit's own Android builds).
+
+So the whole DLL (and each `libmpv.so`) is under the **LGPL, version 3 or later** (FFmpeg with version3 makes it so), and the other parts keep
 their own permissive or LGPL licences. Every licence text is in `LICENSES/` in the zip. There is no GPL-only code and no
 non-free code.
 
@@ -66,21 +74,30 @@ On Ubuntu 24.04 (or in GitHub Actions):
 ```sh
 sudo apt-get install nasm ninja-build pkg-config zip python3-jinja2 cmake git curl xz-utils
 pipx install meson==1.9.2
-./build.sh            # about 15 minutes; the result is in out/
+./build.sh            # Windows: about 5 minutes; the result is in out/
+sudo apt-get install unzip
+./build-android.sh    # Android: about 7 minutes for the three ABIs; the result is in out-android/
 ```
+
+`common.sh` holds what both share: the pinned sources, the FFmpeg component lists and the licence list.
+`build-android.sh` downloads the Android NDK r28c (the version Flutter uses, SHA-256 pinned) and builds for API 26.
+It checks that each `libmpv.so` needs only Android system libraries, has no text relocations, is 16 KB page aligned
+(Android 15+), exports `mpv_lavc_set_java_vm`, has every filter and soxr, and is not a GPL build.
 
 `build.sh` downloads the compiler ([llvm-mingw](https://github.com/mstorsjo/llvm-mingw), UCRT) and every source
 tarball, checks each SHA-256, builds the libraries statically, then FFmpeg, then `libmpv-2.dll`. At the end it checks that:
 the DLL needs only Windows system DLLs, every filter above is in it, soxr is in, and it is not a GPL build.
 
-To build on GitHub: **Actions → Build and release → Run workflow**. With "Publish a GitHub release" ticked, it makes
-the release `v<today>`.
+To build on GitHub: **Actions → Build and release → Run workflow**, and pick Windows, Android or both. With "Publish"
+ticked, it makes the release `v<today>` (Windows) and/or `v<today>-android`. A release that already exists is never
+replaced, because Lumen pins each release's SHA-256: delete it by hand first if you really mean to.
 
 ## How an update works
 
-1. Change a version in `build.sh` (the `SOURCES` list or `PLACEBO_COMMIT`) and its SHA-256.
+1. Change a version in `common.sh` (the `SOURCES` list or `PLACEBO_COMMIT`) and its SHA-256.
 2. Run the workflow. A new release `v<date>` appears.
-3. In Lumen, change the release tag and the zip's SHA-256 in `windows/CMakeLists.txt`.
+3. In Lumen, change the release tag and the zip's SHA-256 in `windows/CMakeLists.txt` (Windows) and
+   `android/app/build.gradle.kts` (Android).
 
 ## Who made it
 
