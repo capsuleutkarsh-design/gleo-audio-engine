@@ -60,6 +60,7 @@ LIBMESON=("${MESON[@]}" --default-library static)
 get_sources
 echo "toolchain $TOOLCHAIN $TOOLCHAIN_URL sha256:$TOOLCHAIN_SHA" >> "$OUT/SOURCES.txt"
 S=$W/src
+patch_sources
 
 # --- Libraries ---------------------------------------------------------------------
 PKG=zlib; cd "$S/zlib"
@@ -134,7 +135,9 @@ echo "libmpv-2.dll imports: $IMPORTS"
 if echo "$IMPORTS" | grep -qiE '^(lib|zlib|avcodec|avformat|avutil|swresample|swscale|avfilter|soxr)'; then
   echo "ERROR: the DLL depends on a non-system DLL"; exit 1
 fi
-for f in $FILTERS; do grep -qE "&ff_[av]f_$f," "$S/ffmpeg/libavfilter/filter_list.c" || { echo "ERROR: filter $f missing"; exit 1; }; done
+check_ffmpeg "$S/ffmpeg"
+EXPORTS=$($H-objdump -p "$DLL")
+grep -qE '[[:space:]]gleo_scope_read$' <<< "$EXPORTS" || { echo "ERROR: gleo_scope_read not exported"; exit 1; }
 grep -qa -- "--enable-libsoxr" "$DLL" || { echo "ERROR: soxr not in the build"; exit 1; }
 grep -qa -- "--enable-gpl" "$DLL" && { echo "ERROR: GPL build"; exit 1; }
 

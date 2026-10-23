@@ -1,0 +1,111 @@
+diff -ruN a/libavcodec/Makefile b/libavcodec/Makefile
+--- a/libavcodec/Makefile	2026-10-23 11:54:24.378778500 +0530
++++ b/libavcodec/Makefile	2026-10-23 11:55:37.292168700 +0530
+@@ -347,6 +347,10 @@
+ OBJS-$(CONFIG_DSD_MSBF_DECODER)        += dsddec.o dsd.o
+ OBJS-$(CONFIG_DSD_LSBF_PLANAR_DECODER) += dsddec.o dsd.o
+ OBJS-$(CONFIG_DSD_MSBF_PLANAR_DECODER) += dsddec.o dsd.o
++OBJS-$(CONFIG_DSD_LSBF_DOP_DECODER)    += dsddec.o dsd.o
++OBJS-$(CONFIG_DSD_MSBF_DOP_DECODER)    += dsddec.o dsd.o
++OBJS-$(CONFIG_DSD_LSBF_PLANAR_DOP_DECODER) += dsddec.o dsd.o
++OBJS-$(CONFIG_DSD_MSBF_PLANAR_DOP_DECODER) += dsddec.o dsd.o
+ OBJS-$(CONFIG_DSICINAUDIO_DECODER)     += dsicinaudio.o
+ OBJS-$(CONFIG_DSICINVIDEO_DECODER)     += dsicinvideo.o
+ OBJS-$(CONFIG_DSS_SP_DECODER)          += dss_sp.o
+diff -ruN a/libavcodec/allcodecs.c b/libavcodec/allcodecs.c
+--- a/libavcodec/allcodecs.c	2026-10-23 11:54:24.256194800 +0530
++++ b/libavcodec/allcodecs.c	2026-10-23 11:55:37.291169900 +0530
+@@ -471,6 +471,11 @@
+ extern const FFCodec ff_dsd_msbf_decoder;
+ extern const FFCodec ff_dsd_lsbf_planar_decoder;
+ extern const FFCodec ff_dsd_msbf_planar_decoder;
++/* DoP (DSD over PCM) after the PCM ones, so they are never picked by default. */
++extern const FFCodec ff_dsd_lsbf_dop_decoder;
++extern const FFCodec ff_dsd_msbf_dop_decoder;
++extern const FFCodec ff_dsd_lsbf_planar_dop_decoder;
++extern const FFCodec ff_dsd_msbf_planar_dop_decoder;
+ extern const FFCodec ff_dsicinaudio_decoder;
+ extern const FFCodec ff_dss_sp_decoder;
+ extern const FFCodec ff_dst_decoder;
+diff -ruN a/libavcodec/dsddec.c b/libavcodec/dsddec.c
+--- a/libavcodec/dsddec.c	2026-10-23 11:54:24.129152500 +0530
++++ b/libavcodec/dsddec.c	2026-10-23 11:55:37.292168700 +0530
+@@ -27,6 +27,7 @@
+  */
+ 
+ #include "libavutil/mem.h"
++#include "libavutil/reverse.h"
+ 
+ #include "avcodec.h"
+ #include "codec_internal.h"
+@@ -132,3 +133,70 @@
+ DSD_DECODER(DSD_MSBF, dsd_msbf, "DSD (Direct Stream Digital), most significant bit first")
+ DSD_DECODER(DSD_MSBF_PLANAR, dsd_msbf_planar, "DSD (Direct Stream Digital), most significant bit first, planar")
+ DSD_DECODER(DSD_LSBF_PLANAR, dsd_lsbf_planar, "DSD (Direct Stream Digital), least significant bit first, planar")
++
++/* DoP (DSD over PCM, DoP open standard 1.1): 16 DSD bits per channel in each
++ * 24-bit word, oldest bit highest, under a marker byte that alternates 0x05 /
++ * 0xFA every sample period. Output: S32 (the DoP word in the top 24 bits) at
++ * the DSD bit rate / 16, e.g. DSD64 -> 176.4 kHz. Only a DoP DAC fed these
++ * samples unchanged turns them back into DSD; anything else hears noise. */
++typedef struct DoPContext {
++    int odd; /* the next marker is 0xFA */
++} DoPContext;
++
++static av_cold int dop_init(AVCodecContext *avctx)
++{
++    if (!avctx->ch_layout.nb_channels || avctx->sample_rate < 2)
++        return AVERROR_INVALIDDATA;
++    avctx->sample_fmt   = AV_SAMPLE_FMT_S32;
++    avctx->sample_rate /= 2; /* the demuxer gives bytes per second per channel */
++    return 0;
++}
++
++static int dop_frame(AVCodecContext *avctx, AVFrame *frame,
++                     int *got_frame_ptr, AVPacket *avpkt)
++{
++    DoPContext *s = avctx->priv_data;
++    int nch    = avctx->ch_layout.nb_channels;
++    int lsbf   = avctx->codec_id == AV_CODEC_ID_DSD_LSBF || avctx->codec_id == AV_CODEC_ID_DSD_LSBF_PLANAR;
++    int planar = avctx->codec_id == AV_CODEC_ID_DSD_LSBF_PLANAR || avctx->codec_id == AV_CODEC_ID_DSD_MSBF_PLANAR;
++    int per_ch = avpkt->size / nch;  /* bytes of each channel in this packet */
++    int step   = planar ? 1 : nch;   /* from one byte of a channel to its next */
++    int32_t *dst;
++    int ret;
++
++    frame->nb_samples = per_ch / 2;  /* an odd last byte (end of file) is dropped */
++    if (!frame->nb_samples)
++        return avpkt->size;
++    if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
++        return ret;
++    dst = (int32_t *)frame->data[0];
++    for (int i = 0; i < frame->nb_samples; i++, s->odd = !s->odd) {
++        uint32_t marker = s->odd ? 0xFA : 0x05;
++        for (int c = 0; c < nch; c++) {
++            const uint8_t *p = avpkt->data + (planar ? c * per_ch + 2 * i : 2 * i * nch + c);
++            uint32_t a = p[0], b = p[step];
++            if (lsbf)
++                a = ff_reverse[a], b = ff_reverse[b];
++            *dst++ = (int32_t)(marker << 24 | a << 16 | b << 8);
++        }
++    }
++    *got_frame_ptr = 1;
++    return avpkt->size;
++}
++
++#define DOP_DECODER(id_, name_, long_name_) \
++const FFCodec ff_ ## name_ ## _dop_decoder = { \
++    .p.name         = #name_ "_dop", \
++    CODEC_LONG_NAME(long_name_ " as DoP (DSD over PCM)"), \
++    .p.type         = AVMEDIA_TYPE_AUDIO, \
++    .p.id           = AV_CODEC_ID_##id_, \
++    .priv_data_size = sizeof(DoPContext), \
++    .init           = dop_init, \
++    FF_CODEC_DECODE_CB(dop_frame), \
++    .p.capabilities = AV_CODEC_CAP_DR1, \
++};
++
++DOP_DECODER(DSD_LSBF, dsd_lsbf, "DSD (Direct Stream Digital), least significant bit first")
++DOP_DECODER(DSD_MSBF, dsd_msbf, "DSD (Direct Stream Digital), most significant bit first")
++DOP_DECODER(DSD_MSBF_PLANAR, dsd_msbf_planar, "DSD (Direct Stream Digital), most significant bit first, planar")
++DOP_DECODER(DSD_LSBF_PLANAR, dsd_lsbf_planar, "DSD (Direct Stream Digital), least significant bit first, planar")

@@ -1,0 +1,22 @@
+diff -ruN a/libavfilter/Makefile b/libavfilter/Makefile
+--- a/libavfilter/Makefile	2026-10-23 11:54:23.371070900 +0530
++++ b/libavfilter/Makefile	2026-10-23 11:55:37.287171400 +0530
+@@ -176,6 +176,7 @@
+ OBJS-$(CONFIG_VIRTUALBASS_FILTER)            += af_virtualbass.o
+ OBJS-$(CONFIG_VOLUME_FILTER)                 += af_volume.o
+ OBJS-$(CONFIG_VOLUMEDETECT_FILTER)           += af_volumedetect.o
++OBJS-$(CONFIG_GLEOSCOPE_FILTER)              += af_gleoscope.o
+ 
+ OBJS-$(CONFIG_AEVALSRC_FILTER)               += aeval.o
+ OBJS-$(CONFIG_AFDELAYSRC_FILTER)             += asrc_afdelaysrc.o
+diff -ruN a/libavfilter/allfilters.c b/libavfilter/allfilters.c
+--- a/libavfilter/allfilters.c	2026-10-23 11:54:23.244870300 +0530
++++ b/libavfilter/allfilters.c	2026-10-23 11:55:37.286168900 +0530
+@@ -162,6 +162,7 @@
+ extern const FFFilter ff_af_virtualbass;
+ extern const FFFilter ff_af_volume;
+ extern const FFFilter ff_af_volumedetect;
++extern const FFFilter ff_af_gleoscope;
+ extern const FFFilter ff_af_whisper;
+ 
+ extern const FFFilter ff_asrc_aevalsrc;

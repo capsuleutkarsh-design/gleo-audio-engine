@@ -1,0 +1,92 @@
+diff -ruN a/libswresample/options.c b/libswresample/options.c
+--- a/libswresample/options.c	2026-10-23 11:54:23.621913900 +0530
++++ b/libswresample/options.c	2026-10-23 11:55:37.289169900 +0530
+@@ -97,6 +97,12 @@
+                                                         , OFFSET(precision)      , AV_OPT_TYPE_DOUBLE,{.dbl=20.0                  }, 15.0   , 33.0      , PARAM },
+ {"cheby"                , "enable soxr Chebyshev passband & higher-precision irrational ratio approximation"
+                                                         , OFFSET(cheby)          , AV_OPT_TYPE_BOOL , {.i64=0                     }, 0      , 1         , PARAM },
++{"soxr_phase"           , "set soxr phase response (0 minimum, 25 intermediate, 50 linear, -1 soxr default)"
++                                                        , OFFSET(soxr_phase)     , AV_OPT_TYPE_DOUBLE,{.dbl=-1                    }, -1     , 100       , PARAM },
++{"soxr_stopband"        , "set soxr stopband start (1 Nyquist, above 1 allows aliasing, 0 soxr default)"
++                                                        , OFFSET(soxr_stopband)  , AV_OPT_TYPE_DOUBLE,{.dbl=0                     }, 0      , 2         , PARAM },
++{"soxr_steep"           , "enable the soxr steep filter"
++                                                        , OFFSET(soxr_steep)     , AV_OPT_TYPE_BOOL , {.i64=0                     }, 0      , 1         , PARAM },
+ {"min_comp"             , "set minimum difference between timestamps and audio data (in seconds) below which no timestamp compensation of either kind is applied"
+                                                         , OFFSET(min_compensation),AV_OPT_TYPE_FLOAT ,{.dbl=FLT_MAX               }, 0      , FLT_MAX   , PARAM },
+ {"min_hard_comp"        , "set minimum difference between timestamps and audio data (in seconds) to trigger padding/trimming the data."
+diff -ruN a/libswresample/resample.c b/libswresample/resample.c
+--- a/libswresample/resample.c	2026-10-23 11:54:24.000795800 +0530
++++ b/libswresample/resample.c	2026-10-23 11:55:37.289169900 +0530
+@@ -183,7 +183,8 @@
+ 
+ static ResampleContext *resample_init(ResampleContext *c, int out_rate, int in_rate, int filter_size, int phase_shift, int linear,
+                                     double cutoff0, enum AVSampleFormat format, enum SwrFilterType filter_type, double kaiser_beta,
+-                                    double precision, int cheby, int exact_rational)
++                                    double precision, int cheby, int exact_rational,
++                                    double soxr_phase, double soxr_stopband, int soxr_steep)
+ {
+     double cutoff = cutoff0? cutoff0 : 0.97;
+     double factor= FFMIN(out_rate * cutoff / in_rate, 1.0);
+diff -ruN a/libswresample/soxr_resample.c b/libswresample/soxr_resample.c
+--- a/libswresample/soxr_resample.c	2026-10-23 11:54:23.498712200 +0530
++++ b/libswresample/soxr_resample.c	2026-10-23 11:55:37.290169600 +0530
+@@ -30,7 +30,8 @@
+ #include <soxr.h>
+ 
+ static struct ResampleContext *create(struct ResampleContext *c, int out_rate, int in_rate, int filter_size, int phase_shift, int linear,
+-        double cutoff, enum AVSampleFormat format, enum SwrFilterType filter_type, double kaiser_beta, double precision, int cheby, int exact_rational){
++        double cutoff, enum AVSampleFormat format, enum SwrFilterType filter_type, double kaiser_beta, double precision, int cheby, int exact_rational,
++        double soxr_phase, double soxr_stopband, int soxr_steep){
+     soxr_error_t error;
+ 
+     soxr_datatype_t type =
+@@ -45,8 +46,13 @@
+ 
+     soxr_io_spec_t io_spec = soxr_io_spec(type, type);
+ 
+-    soxr_quality_spec_t q_spec = soxr_quality_spec((int)((precision-2)/4), (SOXR_HI_PREC_CLOCK|SOXR_ROLLOFF_NONE)*!!cheby);
++    soxr_quality_spec_t q_spec = soxr_quality_spec((int)((precision-2)/4) | (soxr_steep ? SOXR_STEEP_FILTER : 0),
++                                                   (SOXR_HI_PREC_CLOCK|SOXR_ROLLOFF_NONE)*!!cheby);
+     q_spec.precision = precision;
++    if (soxr_phase >= 0)
++        q_spec.phase_response = soxr_phase;
++    if (soxr_stopband > 0)
++        q_spec.stopband_begin = soxr_stopband;
+ #if !defined SOXR_VERSION /* Deprecated @ March 2013: */
+     q_spec.bw_pc = cutoff? FFMAX(FFMIN(cutoff,.995),.8)*100 : q_spec.bw_pc;
+ #else
+diff -ruN a/libswresample/swresample.c b/libswresample/swresample.c
+--- a/libswresample/swresample.c	2026-10-23 11:54:23.874726700 +0530
++++ b/libswresample/swresample.c	2026-10-23 11:55:37.288169800 +0530
+@@ -284,7 +284,7 @@
+     }
+ 
+     if (s->out_sample_rate!=s->in_sample_rate || (s->flags & SWR_FLAG_RESAMPLE)){
+-        s->resample = s->resampler->init(s->resample, s->out_sample_rate, s->in_sample_rate, s->filter_size, s->phase_shift, s->linear_interp, s->cutoff, s->int_sample_fmt, s->filter_type, s->kaiser_beta, s->precision, s->cheby, s->exact_rational);
++        s->resample = s->resampler->init(s->resample, s->out_sample_rate, s->in_sample_rate, s->filter_size, s->phase_shift, s->linear_interp, s->cutoff, s->int_sample_fmt, s->filter_type, s->kaiser_beta, s->precision, s->cheby, s->exact_rational, s->soxr_phase, s->soxr_stopband, s->soxr_steep);
+         if (!s->resample) {
+             av_log(s, AV_LOG_ERROR, "Failed to initialize resampler\n");
+             return AVERROR(ENOMEM);
+diff -ruN a/libswresample/swresample_internal.h b/libswresample/swresample_internal.h
+--- a/libswresample/swresample_internal.h	2026-10-23 11:54:23.745389900 +0530
++++ b/libswresample/swresample_internal.h	2026-10-23 11:55:37.288169800 +0530
+@@ -69,7 +69,8 @@
+ };
+ 
+ typedef struct ResampleContext * (* resample_init_func)(struct ResampleContext *c, int out_rate, int in_rate, int filter_size, int phase_shift, int linear,
+-                                    double cutoff, enum AVSampleFormat format, enum SwrFilterType filter_type, double kaiser_beta, double precision, int cheby, int exact_rational);
++                                    double cutoff, enum AVSampleFormat format, enum SwrFilterType filter_type, double kaiser_beta, double precision, int cheby, int exact_rational,
++                                    double soxr_phase, double soxr_stopband, int soxr_steep);
+ typedef void    (* resample_free_func)(struct ResampleContext **c);
+ typedef int     (* multiple_resample_func)(struct ResampleContext *c, AudioData *dst, int dst_size, AudioData *src, int src_size, int *consumed);
+ typedef int     (* resample_flush_func)(struct SwrContext *c);
+@@ -131,6 +132,9 @@
+     double kaiser_beta;                                /**< swr beta value for Kaiser window (only applicable if filter_type == AV_FILTER_TYPE_KAISER) */
+     double precision;                               /**< soxr resampling precision (in bits) */
+     int cheby;                                      /**< soxr: if 1 then passband rolloff will be none (Chebyshev) & irrational ratio approximation precision will be higher */
++    double soxr_phase;                              /**< soxr phase response: 0 minimum, 25 intermediate, 50 linear; < 0 = soxr default */
++    double soxr_stopband;                           /**< soxr stopband start (1 = Nyquist, > 1 allows aliasing); 0 = soxr default */
++    int soxr_steep;                                 /**< soxr: if 1 then use the steep filter (passband ends closer to Nyquist) */
+ 
+     float min_compensation;                         ///< swr minimum below which no compensation will happen
+     float min_hard_compensation;                    ///< swr minimum below which no silence inject / sample drop will happen

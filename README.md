@@ -10,7 +10,18 @@ almost no audio filters. This one is newer and has what Lumen needs for good sou
 
 - **Audio filters:** equalizer, bass, treble, lowshelf, highshelf, highpass, lowpass, bandpass, allpass, biquad,
   firequalizer, superequalizer, alimiter, acompressor, crossfeed, bs2b, aresample, volume, loudnorm, ebur128,
-  dynaudnorm, extrastereo, stereotools, pan, aformat, anull, asplit, amix, adelay, afir, headphone, aecho.
+  dynaudnorm, extrastereo, stereotools, pan, aformat, anull, asplit, amix, adelay, afir, headphone, aecho,
+  amovie (reads an impulse-response WAV for convolution inside the filter chain).
+- **Gleo's own additions** (since v2026.10.23; the code is in [`patches/`](patches), LGPL like FFmpeg and mpv):
+  - `gleoscope`, an audio filter that copies the newest samples for Gleo's live spectrum. The audio passes through
+    untouched, in its own format (a bit-perfect chain stays bit-perfect). libmpv exports `gleo_scope_read()` to read them.
+  - Three libswresample options for the soxr resampler: `soxr_phase` (0 minimum, 25 intermediate, 50 linear phase),
+    `soxr_stopband` (above 1 allows some aliasing for a gentler filter) and `soxr_steep`. FFmpeg itself only passes
+    soxr's precision, cutoff and Chebyshev switch.
+  - DoP (DSD over PCM) decoders: `dsd_lsbf_dop`, `dsd_msbf_dop`, `dsd_lsbf_planar_dop`, `dsd_msbf_planar_dop`. They are
+    registered after FFmpeg's own DSD decoders, so nothing uses them unless asked by name (mpv `--ad=`). They turn DSD into
+    32-bit samples at a sixteenth of the DSD bit rate (DSD64 → 176.4 kHz) with the DoP 0x05/0xFA markers, for DACs that
+    accept DoP. Played any other way, DoP is loud noise.
 - **libsoxr**, the high-quality resampler (`aresample=resampler=soxr`, or mpv's `--audio-swresample-o=resampler=soxr`).
 - **libbs2b**, Bauer stereo-to-binaural crossfeed for headphones (the `bs2b` filter).
 - **Local files only.** Every network protocol is switched off; FFmpeg can open `file` only. No scripting
@@ -82,11 +93,17 @@ sudo apt-get install unzip
 `common.sh` holds what both share: the pinned sources, the FFmpeg component lists and the licence list.
 `build-android.sh` downloads the Android NDK r28c (the version Flutter uses, SHA-256 pinned) and builds for API 26.
 It checks that each `libmpv.so` needs only Android system libraries, has no text relocations, is 16 KB page aligned
-(Android 15+), exports `mpv_lavc_set_java_vm`, has every filter and soxr, and is not a GPL build.
+(Android 15+), exports `mpv_lavc_set_java_vm` and `gleo_scope_read`, has every filter, the DoP decoders and soxr, and is
+not a GPL build.
+
+Both scripts apply Gleo's patches (`patch_sources` in `common.sh`) right after unpacking the sources: they copy
+`patches/ffmpeg/af_gleoscope.c` into FFmpeg, apply `patches/ffmpeg/*.patch`, and append `patches/mpv/client-gleo.c` to
+mpv's `player/client.c`.
 
 `build.sh` downloads the compiler ([llvm-mingw](https://github.com/mstorsjo/llvm-mingw), UCRT) and every source
 tarball, checks each SHA-256, builds the libraries statically, then FFmpeg, then `libmpv-2.dll`. At the end it checks that:
-the DLL needs only Windows system DLLs, every filter above is in it, soxr is in, and it is not a GPL build.
+the DLL needs only Windows system DLLs, every filter above and the DoP decoders are in it, it exports `gleo_scope_read`,
+soxr is in, and it is not a GPL build.
 
 To build on GitHub: **Actions → Build and release → Run workflow**, and pick Windows, Android or both. With "Publish"
 ticked, it makes the release `v<today>` (Windows) and/or `v<today>-android`. A release that already exists is never

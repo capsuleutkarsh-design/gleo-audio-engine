@@ -33,6 +33,7 @@ TC=$W/$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin
 get_sources
 echo "toolchain $NDK $NDK_URL sha256:$NDK_SHA" >> "$OUT/SOURCES.txt"
 S=$W/src
+patch_sources
 # media_kit calls mpv_lavc_set_java_vm() (libmpv.so) to hand FFmpeg the JavaVM, which mpv's
 # AudioTrack output needs. The same function as media_kit's own Android builds.
 grep -q mpv_lavc_set_java_vm "$S/mpv/player/client.c" || cat >> "$S/mpv/player/client.c" <<'EOF'
@@ -163,9 +164,10 @@ EOF
   "$TC/llvm-readelf" -lW "$SO" | awk '/LOAD/ && $NF != "0x4000" {bad=1} END {exit bad}' \
     || { echo "ERROR: $ABI is not 16 KB aligned"; exit 1; }
   grep -q ' mpv_lavc_set_java_vm$' <<< "$SYMS" || { echo "ERROR: $ABI misses mpv_lavc_set_java_vm"; exit 1; }
+  grep -q ' gleo_scope_read$' <<< "$SYMS" || { echo "ERROR: $ABI misses gleo_scope_read"; exit 1; }
   grep -qa -- "--enable-libsoxr" "$SO" || { echo "ERROR: soxr not in the build"; exit 1; }
   grep -qa -- "--enable-gpl" "$SO" && { echo "ERROR: GPL build"; exit 1; }
-  for f in $FILTERS; do grep -qE "&ff_[av]f_$f," "$B/b-ffmpeg/libavfilter/filter_list.c" || { echo "ERROR: filter $f missing"; exit 1; }; done
+  check_ffmpeg "$B/b-ffmpeg"
   mkdir -p "$OUT/lib/$ABI" && cp "$SO" "$OUT/lib/$ABI/libmpv.so"
 done
 

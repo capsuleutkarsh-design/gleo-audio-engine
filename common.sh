@@ -23,6 +23,7 @@ FILTERS="aformat anull aresample asplit amix adelay aecho afir alimiter acompres
   allpass bandpass bass biquad crossfeed dynaudnorm ebur128 equalizer extrastereo
   firequalizer headphone highpass highshelf loudnorm lowpass lowshelf pan stereotools
   superequalizer treble volume bs2b
+  amovie gleoscope
   format null overlay"
 DECODERS="aac* ac3 eac3 alac als ape atrac* cook dca dsd* flac gsm* mlp truehd mp1* mp2* mp3*
   mpc* opus ra* ralf shorten tak tta vorbis wavpack wma* pcm* adpcm*
@@ -57,6 +58,24 @@ get_sources() {
   fi
   tar --exclude=.git --sort=name --mtime=@0 --owner=0 --group=0 -C "$W/src" -cJf "$OUT/sources/libplacebo-$PLACEBO_VER.tar.xz" libplacebo
   echo "libplacebo $PLACEBO_VER $PLACEBO_GIT commit:$PLACEBO_COMMIT (with submodules: $(git -C "$W/src/libplacebo" submodule status | awk '{print $2"@"$1}' | tr '\n' ' '))" >> "$OUT/SOURCES.txt"
+}
+
+# Gleo's own additions (LGPL, in patches/): the gleoscope analyzer tap, soxr phase /
+# stopband / steep options in libswresample, DoP (DSD over PCM) decoders, and the libmpv
+# export of the tap. Run once, after get_sources.
+patch_sources() {
+  grep -q gleoscope "$S/ffmpeg/libavfilter/allfilters.c" && return 0
+  cp "$ROOT/patches/ffmpeg/af_gleoscope.c" "$S/ffmpeg/libavfilter/"
+  for p in "$ROOT"/patches/ffmpeg/*.patch; do patch -d "$S/ffmpeg" -p1 --forward < "$p"; done
+  cat "$ROOT/patches/mpv/client-gleo.c" >> "$S/mpv/player/client.c"
+}
+# Checks what the patches add: every filter in FILTERS (amovie is ff_avsrc_amovie) and
+# the DoP decoders. $1 = FFmpeg's build folder.
+check_ffmpeg() {
+  for f in $FILTERS; do grep -qE "&ff_[a-z]+_$f," "$1/libavfilter/filter_list.c" || { echo "ERROR: filter $f missing"; exit 1; }; done
+  for d in dsd_lsbf dsd_msbf dsd_lsbf_planar dsd_msbf_planar; do
+    grep -q "&ff_${d}_dop_decoder," "$1/libavcodec/codec_list.c" || { echo "ERROR: decoder ${d}_dop missing"; exit 1; }
+  done
 }
 
 # The licence texts of every part, into $OUT/LICENSES (the toolchain's are added by each script).
