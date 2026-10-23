@@ -11,6 +11,10 @@ on:
         type: choice
         options: [both, windows, android]
         default: both
+      tag:
+        description: Release tag (empty = v<date>; Android adds -android). For a second build on the same day.
+        type: string
+        default: ''
   push:
     branches: [main]
 
@@ -34,8 +38,9 @@ jobs:
 
       - name: Build
         run: |
-          echo "TAG=v$(date -u +%Y.%m.%d)" >> "$GITHUB_ENV"
-          TAG=v$(date -u +%Y.%m.%d) ./build.sh
+          T="${{ inputs.tag }}"; [ -n "$T" ] || T=v$(date -u +%Y.%m.%d)
+          echo "TAG=$T" >> "$GITHUB_ENV"
+          TAG=$T ./build.sh
 
       - name: Upload the build (always kept for 30 days)
         uses: actions/upload-artifact@v4
@@ -96,8 +101,9 @@ jobs:
 
       - name: Build
         run: |
-          echo "TAG=v$(date -u +%Y.%m.%d)-android" >> "$GITHUB_ENV"
-          TAG=v$(date -u +%Y.%m.%d)-android ./build-android.sh
+          T="${{ inputs.tag }}"; [ -n "$T" ] || T=v$(date -u +%Y.%m.%d)
+          echo "TAG=$T-android" >> "$GITHUB_ENV"
+          TAG=$T-android ./build-android.sh
 
       - name: Upload the build (always kept for 30 days)
         uses: actions/upload-artifact@v4
